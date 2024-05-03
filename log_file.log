@@ -1,0 +1,14 @@
+2024-05-03 12:31:15,693 - FASTNER_VENDING_MACHINE - [DEBUG] Sofware Startup
+2024-05-03 12:31:15,740 - FASTNER_VENDING_MACHINE - [DEBUG] Started thread: live money getter.
+2024-05-03 12:31:15,741 - FASTNER_VENDING_MACHINE - [DEBUG] Fetching info from, item and grid json files.
+2024-05-03 12:31:15,742 - FASTNER_VENDING_MACHINE - [DEBUG] Generating Buttons.
+2024-05-03 12:31:15,746 - FASTNER_VENDING_MACHINE - [WARNING] Communication with Coin Module Failed System will STILL continue without this feature!
+2024-05-03 12:31:15,757 - FASTNER_VENDING_MACHINE - [WARNING] Communication with Gcash Module Failed System will STILL continue without this feature!
+2024-05-03 12:31:15,768 - FASTNER_VENDING_MACHINE - [WARNING] Communication with ServoKit Failed System will STILL continue without this feature!
+2024-05-03 12:43:12,796 - FASTNER_VENDING_MACHINE - [DEBUG] Sofware Startup
+2024-05-03 12:43:12,893 - FASTNER_VENDING_MACHINE - [DEBUG] Started thread: live money getter.
+2024-05-03 12:43:12,893 - FASTNER_VENDING_MACHINE - [DEBUG] Fetching info from, item and grid json files.
+2024-05-03 12:43:12,899 - FASTNER_VENDING_MACHINE - [DEBUG] Generating Buttons.
+2024-05-03 12:43:12,901 - FASTNER_VENDING_MACHINE - [WARNING] Communication with Coin Module Failed System will STILL continue without this feature!
+2024-05-03 12:43:12,906 - FASTNER_VENDING_MACHINE - [WARNING] Communication with Gcash Module Failed System will STILL continue without this feature!
+2024-05-03 12:43:12,914 - FASTNER_VENDING_MACHINE - [WARNING] Communication with ServoKit Failed System will STILL continue without this feature!

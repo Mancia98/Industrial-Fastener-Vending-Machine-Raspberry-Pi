@@ -1,0 +1,112 @@
+{
+    "buttons": {
+        "0": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 0,
+            "column": 0,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "1": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 0,
+            "column": 1,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "2": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 0,
+            "column": 2,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "3": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 1,
+            "column": 0,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "4": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 1,
+            "column": 1,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "5": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 1,
+            "column": 2,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "6": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 2,
+            "column": 0,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "7": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 2,
+            "column": 1,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "8": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 2,
+            "column": 2,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "9": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 3,
+            "column": 0,
+            "sticky": "WE",
+            "enabled": false
+        },
+        "10": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 3,
+            "column": 1,
+            "sticky": "WE",
+            "enabled": true
+        },
+        "11": {
+            "id": 0,
+            "width": 30,
+            "height": 5,
+            "row": 3,
+            "column": 2,
+            "sticky": "WE",
+            "enabled": true
+        }
+    }
+}
