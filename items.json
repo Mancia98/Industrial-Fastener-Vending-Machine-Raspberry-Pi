@@ -5,7 +5,7 @@
             "item_name": "HEX BOLTS SET 1",
             "item_size": "8 mm x 1",
             "item_price": 25,
-            "inventory": 8,
+            "inventory": 0,
             "available": true
         },
         "1": {
@@ -21,7 +21,7 @@
             "item_name": "HEX BOLTS SET 3",
             "item_size": "12 mm x 1",
             "item_price": 45,
-            "inventory": 10,
+            "inventory": 9,
             "available": true
         },
         "3": {
@@ -97,5 +97,5 @@
             "available": true
         }
     },
-    "updates": "2024-06-07 12:49:34"
+    "updates": "2024-06-07 20:13:23"
 }

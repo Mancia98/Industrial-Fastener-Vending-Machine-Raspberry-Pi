@@ -1113,7 +1113,11 @@ servo_kit = Servo_Control()
 logger = Logging(__software_name__, log_path)
 logger.debug("Sofware Startup")
 
-cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72", sslmode="require", sslcert="database/client-cert.pem", sslkey="database/client-key.pem")
+# INITIALIZE DATABASE ADAPTER
+# cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72", sslmode="require", sslcert="database/client-cert.pem", sslkey="database/client-key.pem")
+cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72")
+
+
 
 logger.debug(cn.log)
 
