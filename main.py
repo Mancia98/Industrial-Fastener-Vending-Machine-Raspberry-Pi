@@ -2,13 +2,23 @@ import tkinter as tk
 from PIL import Image, ImageTk
 from helper_lib import *
 from hardware_interface import *
-from wallet import *
 import time
 import threading
+from datetime import datetime
+import pytz
+import json
+from datetime import datetime
+
+
+from hardware_interface import *
+
+
+from lib.postgresql_adapter import Data_Base_Connection
+
 
 __author__ = "Kenneth B. Mancia <manciakennethbarrun@outlook.com>"
 __status__  = "development"
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __date__    = "02 May 2024"
 __software_name__ = "FASTNER_VENDING_MACHINE"
 
@@ -16,7 +26,7 @@ __software_name__ = "FASTNER_VENDING_MACHINE"
 #code setup
 ENV = "DEV"
 
-#global data containers
+#global data containers 
 item_descriptions:dict = {}
 
 buttons:dict = {}
@@ -109,6 +119,8 @@ class Payment_Page:
         else:
             running_session_id = self.key
             pay_page = tk.Toplevel()
+            self.page = pay_page
+            pay_page.protocol("WM_DELETE_WINDOW", self.close_page)
             pay_page.attributes(window_configuration, True)
             data_frame = tk.LabelFrame(pay_page, text=self.lbl_pay_method, font=('Arial', 20))
             data_frame.pack(expand=True)
@@ -204,21 +216,15 @@ class Transaction(Singleton):
                         change_enable = coin_change
                     else:
                         change_enable = gcash_change
-                    end_transaction = End_Transaction(self,self.key, change_enable)                
-                    self.transaction_info.update_transaction_status(self.transaction_id, self.money, change, "SUCCESS")   
-                    update_json(self.key, "inventory", (int(self.inventory_count) - int(self.item_amount)), item_path)
+                    self.end_transaction = End_Transaction(self,self.key, change_enable)                
+                    self.transaction_info.update_transaction_status(self.transaction_id, self.money, change, "SUCCESS")
+                    items_handler.update_inventory(self.key, (int(self.inventory_count) - int(self.item_amount)))   
+                    # update_json(self.key, "inventory", (int(self.inventory_count) - int(self.item_amount)), item_path)
                 except:
                     print("Transaction Update Failed")
                     self.close_page()
                 else:
-                    if self.transaction_info.publish():
-                        servo_kit.set_index(self.key)
-                        servo_kit.dispense()
-                        str_money = "0"
-                        end_transaction.dispense_change()
-                        self.__proceed_lock = False
-                    else:
-                        print("unsucessful publish")   
+                    transaction_routine(self)   
             else:
                 if coin_module.can_give_change:
                     warning_box()
@@ -249,13 +255,13 @@ class Transaction_Info(Singleton):
         self.__transaction_id = generate_datetime_string()
         self.__item_name = item_name
         self.__item_description = item_description
-        self.__item_price = str(item_price)
-        self.__item_amount = str(item_amount)
-        self.__item_key = str(item_key)
-        self.__money = ""
-        self.__change = ""
+        self.__item_price = item_price
+        self.__item_amount = item_amount
+        self.__item_key = item_key
+        self.__money = 0
+        self.__change = 0
         self.__status = ""
-        self.__inventory_count = str(inventory_count)
+        self.__inventory_count = inventory_count
         self.__payment_type = payment_type.upper()
         self.__hostname = get_hostname()
         self.__local_ip_address = get_local_ip()
@@ -286,8 +292,8 @@ class Transaction_Info(Singleton):
         
     def update_transaction_status(self, key, money, change, status) -> bool:
         if key == self.__transaction_id:
-            self.__money = str(money)
-            self.__change = str(change)
+            self.__money = money
+            self.__change = change
             self.__status = str(status)
             return True
         else:
@@ -299,9 +305,9 @@ class Transaction_Info(Singleton):
         if self.__transaction_id:
             #RECORD_ID,ITEM_NAME,ITEM_DESCRIPTION,ITEM_PRICE,ITEM_AMOUNT,ITEM_KEY,REGISTERED_MONEY,REGISTERED_CHANGE,TRANSACTION_STATUS,ITEM_INVENTORY
             payload = self.get_transaction_info(self.__transaction_id)
-            appender = Data_Writer(record_path)
+            appender = CSV_Interface(record_path)
             appender.items = payload
-            if appender.append_to_csv():
+            if appender.insert():
                 print("PASS TRANSACTION ID PASS IN APPEND")
                 return True
             else:
@@ -309,6 +315,45 @@ class Transaction_Info(Singleton):
                 return False
         else:
             print("Failed to publish data to CSV")
+            return False
+        
+    def publish_database(self, payload:list = None) -> bool:
+
+        if payload:
+            payload = payload
+        else:
+            if self.__transaction_id:
+                #RECORD_ID,ITEM_NAME,ITEM_DESCRIPTION,ITEM_PRICE,ITEM_AMOUNT,ITEM_KEY,REGISTERED_MONEY,REGISTERED_CHANGE,TRANSACTION_STATUS,ITEM_INVENTORY
+                payload = self.get_transaction_info(self.__transaction_id)
+            else:
+                print("NO TRANSACTION ID OR PAYLOAD PASSED TO THIS FUNCTION")
+                return False
+
+        insert_statement = f"""
+                            INSERT INTO TBL_TRANSACTION_RECORD VALUES (
+                                TO_TIMESTAMP('{payload[0]}', 'YYYYMMDD-HH24MISS'), 
+                                '{payload[1]}', 
+                                '{payload[2]}', 
+                                {payload[3]}, 
+                                {payload[4]}, 
+                                '{payload[5]}', 
+                                {payload[6]}, 
+                                {payload[7]}, 
+                                '{payload[8]}', 
+                                '{payload[9]}', 
+                                {payload[10]}, 
+                                '{payload[11]}', 
+                                '{payload[12]}'::INET, 
+                                '{payload[13]}'::INET
+                            );
+                            """
+        if cn.insert(insert_statement):
+            print("PASS TRANSACTION ID DB UPLOAD")
+            print(cn.log)
+            return True
+        else:
+            print("PASS TRANSACTION ID FAILED DB UPLOAD")
+            print(cn.log)
             return False
 
     def close_page(self):
@@ -325,6 +370,7 @@ class End_Transaction:
     def dispense_change(self):
         global str_money
         self.change_page = tk.Toplevel()
+        self.change_page.protocol("WM_DELETE_WINDOW", self.finish_transaction)
         self.change_page.attributes(window_configuration, True)
         change_frame = tk.LabelFrame(self.change_page, text="ITEM DISPENSED SUCCESSFULLY", font=('Arial', 20))
         change_frame.pack(expand=True)
@@ -346,7 +392,7 @@ class End_Transaction:
     
     def dispense_finish(self):
         coin_module.dispense_change()
-        time.sleep(3)
+        time.sleep(1)
         self.finish_transaction()
 
     
@@ -356,16 +402,365 @@ class End_Transaction:
         destroy_all()
         items, grids = get_json_data(item_path, grid_path)
         update_grid(items["items"], grids["buttons"])
-        if isinstance(payment_page_obj, Payment_Page):
+        # if isinstance(payment_page_obj, Payment_Page):
+        #     try:
+        #         window.update()
+        #         payment_page_obj.refresh()
+        #     except:
+        #         print("Payment_Page_is not active")
+        #     else:
+        #         #command if there are no errors raised
+        #         pass
+     
+
+class Coin_Manager:
+    def __init__(self, coins_json_file):
+        self.json_filename = coins_json_file
+        self.db_conn:Data_Base_Interface = cn
+        self.coins = {'1': 0, '5': 0, '10': 0, '20': 0}  # Default initialization
+        self.local_json_data = None
+        # self.__sync_data()
+
+    def __load_json_file(self):
+        try:
+            with open(self.json_filename, "r") as json_file:
+                self.local_json_data = json.load(json_file)
+                self.coins = {str(k): v for k, v in self.local_json_data.get("coins", {'1': 0, '5': 0, '10': 0, '20': 0}).items()}
+            return self.local_json_data.get("last_updated", "1970-01-01T00:00:00.000Z")
+        except FileNotFoundError:
+
+            return "1970-01-01T00:00:00.000Z"
+
+    def __save_json_file(self):
+        local_tz = pytz.timezone('Asia/Shanghai')  # Assuming GMT+8 is Asia/Shanghai timezone
+        current_time = datetime.now(local_tz)  # Get current time in the specified timezone
+        self.local_json_data = {
+            "coins": self.coins,
+            "last_updated": current_time.isoformat()
+        }
+        with open(self.json_filename, 'w') as json_file:
+            json.dump(self.local_json_data, json_file, indent=4)
+
+    def __fetch_data_from_db(self):
+        self.db_conn.connect()
+        try:
+            query = "SELECT coin_count_01, coin_count_05, coin_count_10, coin_count_20, last_updated FROM public.tbl_coin WHERE parent_key = '0';"
+            results = self.db_conn.query(query)
+            print(results)
+            if results:
+                self.db_conn.disconnect()
+                return {
+                    "coins": {
+                        '1': results[0][0],
+                        '5': results[0][1],
+                        '10': results[0][2],
+                        '20': results[0][3]
+                    },
+                    "last_updated": results[0][4].isoformat()  # Ensures timestamp is returned in ISO format
+                }
+            self.db_conn.disconnect()
+            return None
+        except Exception as e:
+            print(f"Error fetching data from the database: {e}")
+            self.db_conn.disconnect()
+            return None
+
+    def __sync_data(self):
+        print(self.__load_json_file())
+        print(self.__fetch_data_from_db())
+
+        json_last_updated = self.__load_json_file()
+        db_last_updated = self.__fetch_data_from_db()['last_updated']
+
+        try:
+            json_last_updated_utc = datetime.strptime(json_last_updated, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+        except ValueError:
+            print(f"Failed to parse JSON last updated timestamp: {json_last_updated}")
+            return
+
+        if db_last_updated:
+            db_last_updated_utc = datetime.strptime(db_last_updated["last_updated"], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+        else:
+            db_last_updated_utc = datetime.min.replace(tzinfo=pytz.UTC)
+
+        if json_last_updated_utc > db_last_updated_utc:
+            # print("JSON file is newer. Updating the database based on JSON data...")
+            self.__update_database()
+        else:
+            # print("Database is newer or JSON file is not found. Updating JSON file based on database data...")
+            self.__save_json_file()
+
+    def __update_database(self):
+        self.db_conn.connect()
+        try:
+            update_statement = f"""
+            UPDATE tbl_coin SET
+            coin_count_01 = {self.coins.get('1')},
+            coin_count_05 = {self.coins.get('5')},
+            coin_count_10 = {self.coins.get('10')},
+            coin_count_20 = {self.coins.get('20')}
+            WHERE parent_key = '0';
+            """
+            self.db_conn.insert(update_statement)
+            self.db_conn.disconnect
+        except Exception as e:
+            self.db_conn.disconnect
+            print(f"Error updating database: {e}")
+
+    def __update_db_from_json(self, updates: dict):
+        if self.db_conn.connect():
             try:
-                window.update()
-                payment_page_obj.refresh()
-            except:
-                print("Payment_Page_is not active")
+                update_statement = f"""
+                    UPDATE public.tbl_coin
+                    SET coin_count_01 = {updates.get('1')},
+                        coin_count_05 = {updates.get('5')},
+                        coin_count_10 = {updates.get('10')},
+                        coin_count_20 = {updates.get('20')}
+                    WHERE parent_key = '0'
+                    """
+                self.db_conn.insert(update_statement)  # Execute the update statement directly
+                return True
+            except Exception as e:
+                # print(f"Error updating database from JSON: {e}")
+                return False
+        return False
+
+    def add_coins(self, coin_type, count):
+        coin_type = str(coin_type)  # Convert coin_type to string
+        if coin_type not in self.coins:
+            raise ValueError(f"Invalid coin type: {coin_type}")
+        if count < 0:
+            raise ValueError("Count cannot be negative")
+        self.coins[coin_type] += count
+        self.__save_json_file()
+
+    def get_coin_count(self, coin_type):
+        if coin_type not in self.coins:
+            raise ValueError(f"Invalid coin type: {coin_type}")
+        return self.coins[coin_type]
+
+    def dispense_change(self, amount):
+        if amount < 0:
+            raise ValueError("Amount cannot be negative")
+
+        change_to_dispense = {}
+        for coin in sorted(self.coins.keys(), key=int, reverse=True):  # Convert coin to integer before sorting
+            coin = str(coin)  # Convert coin to string
+            if amount == 0:
+                break
+            coin_count = min(amount // int(coin), self.coins[coin])  # Convert coin to integer before accessing dictionary
+            if coin_count > 0:
+                change_to_dispense[coin] = coin_count
+                amount -= coin_count * int(coin)  # Convert coin to integer before calculation
+                self.coins[coin] -= coin_count
+
+        if amount != 0:
+            for coin, count in change_to_dispense.items():
+                self.coins[coin] += count
+            raise ValueError("Cannot dispense the exact change with available coins")
+
+        self.__save_json_file()
+        return change_to_dispense
+
+    def get_all_coin_counts(self):
+        total_balance = sum(int(coin) * count for coin, count in self.coins.items())
+        return self.coins.copy(),total_balance
+
+    def sync(self):
+        # data_from_db = self.__fetch_data_from_db()
+
+        # if data_from_db:
+        #     db_coins = data_from_db["coins"]
+        #     db_last_updated = datetime.strptime(data_from_db["last_updated"], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+
+        #     # local_last_updated = datetime.strptime(self.local_json_data["last_updated"], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+        #     print(f"AT sync def {self.local_json_data}")
+        #     local_last_updated = datetime.strptime(self.local_json_data["last_updated"], "%Y-%m-%dT%H:%M:%S.%f%z").replace(tzinfo=pytz.UTC)
+
+        #     if local_last_updated > db_last_updated:
+
+        #         success = self.__update_db_from_json(self.coins)  # Use local data to update database
+        #         # if success:
+        #         #     print("Database updated successfully.")
+        #         # else:
+        #         #     print("Failed to update the database.")
+        #     else:
+        #         # print("Updating the local JSON with database data...")
+        #         self.coins = db_coins
+        #         self.__save_json_file()
+        # # else:
+        # #     print("Failed to fetch data from the database.")
+        print(self.__load_json_file())
+        print(self.__fetch_data_from_db())
+
+        json_last_updated = self.__load_json_file()
+        db_last_updated = self.__fetch_data_from_db()['last_updated']
+
+        try:
+            json_last_updated_utc = datetime.strptime(json_last_updated, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+        except ValueError:
+            print(f"Failed to parse JSON last updated timestamp: {json_last_updated}")
+            return
+
+        if db_last_updated:
+            db_last_updated_utc = datetime.strptime(db_last_updated["last_updated"], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=pytz.UTC)
+        else:
+            db_last_updated_utc = datetime.min.replace(tzinfo=pytz.UTC)
+
+        if json_last_updated_utc > db_last_updated_utc:
+            # print("JSON file is newer. Updating the database based on JSON data...")
+            self.__update_database()
+        else:
+            # print("Database is newer or JSON file is not found. Updating JSON file based on database data...")
+            self.__save_json_file()
+
+class Items_Handler:
+    def __init__(self, items_json_file):
+        self.json_filename = items_json_file
+        self.__load_json_file()
+        # If JSON file doesn't exist, create it based on database data
+        if self.local_json_data is None:
+            print("JSON file does not exist. Creating a new file based on database data...")
+            self.__create_json_file_from_db()
+
+    def __load_json_file(self):
+        try:
+            with open(self.json_filename, "r") as json_file:
+                self.local_json_data = json.load(json_file)
+                return self.local_json_data
+        except FileNotFoundError:
+            self.local_json_data = None
+            return self.local_json_data
+
+    def __create_json_file_from_db(self):
+        data_from_db = self.__fetch_data_from_db()
+        if data_from_db:
+            json_data_new = {"items": {}}
+            for row in data_from_db:
+                item_key = row[0]
+                json_data_new["items"][item_key] = {
+                    "id": int(item_key),
+                    "item_name": row[1],
+                    "item_size": row[2],
+                    "item_price": int(row[4]),
+                    "inventory": row[3],
+                    "available": row[5]
+                }
+            self.__save_json_file(json_data_new)
+            print("JSON file created successfully based on database data.")
+        else:
+            print("Failed to fetch data from the database.")
+
+    def __save_json_file(self, data):
+        data["updates"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Update the timestamp
+        with open(self.json_filename, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+
+    def __fetch_data_from_db(self):
+        if cn.connect():
+            query_statement = (
+                r"SELECT tbl_inventory_live_view.item_key, tbl_inventory_live_view.item_name, "
+                r"tbl_item_detail.item_desc, tbl_inventory_live_view.total_item_amount, "
+                r"tbl_inventory_live_view.item_price, tbl_inventory_live_view.enabled, "
+                r"tbl_inventory_live_view.last_updated "
+                r"FROM tbl_inventory_live_view "
+                r"LEFT JOIN tbl_item_detail ON tbl_inventory_live_view.item_name = tbl_item_detail.item_name "
+                r"ORDER BY CASE WHEN ITEM_KEY ~ '^\d+$' THEN "
+                r"CASE ITEM_KEY WHEN '0' THEN 0 WHEN '1' THEN 1 WHEN '2' THEN 2 WHEN '3' THEN 3 "
+                r"WHEN '4' THEN 4 WHEN '5' THEN 5 WHEN '6' THEN 6 WHEN '7' THEN 7 WHEN '8' THEN 8 "
+                r"WHEN '9' THEN 9 WHEN '10' THEN 10 WHEN '11' THEN 11 ELSE 9999 END "
+                r"ELSE 10000 + ITEM_KEY::int END;"
+            )
+            data_from_db = cn.query(query_statement)
+            cn.disconnect()
+            return data_from_db
+        else:
+            print("Failed to connect to the database.")
+            return None
+
+    def __update_db_from_json(self, updates):
+        if cn.connect():
+            update_statements = [
+                f"UPDATE tbl_inventory_live SET total_item_amount = {item_data['inventory']} WHERE item_key = '{item_key}'"
+                for item_key, item_data in updates.items()
+            ]
+            if cn.insert(update_statements):
+                print("Database updated successfully.")
             else:
-                #command if there are no errors raised
-                pass
-        
+                print("Failed to update the database.")
+            cn.disconnect()
+        else:
+            print("Failed to connect to the database.")
+
+    def sync(self):
+        data_from_db = self.__fetch_data_from_db()
+        local_json_data = self.__load_json_file()
+
+        if data_from_db and local_json_data:
+            json_data_new = {"items": {}}
+            for row in data_from_db:
+                item_key = row[0]
+                json_data_new["items"][item_key] = {
+                    "id": int(item_key),
+                    "item_name": row[1],
+                    "item_size": row[2],
+                    "item_price": int(row[4]),
+                    "inventory": row[3],
+                    "available": row[5]
+                }
+            db_last_updated = max([row[6] for row in data_from_db])
+
+            if json_data_new["items"] != local_json_data["items"]:
+                print(local_json_data)
+                if "updates" in local_json_data:
+                    json_last_updated = datetime.strptime(local_json_data["updates"], "%Y-%m-%d %H:%M:%S")
+                    if json_last_updated > db_last_updated:
+                        updates = {item_key: item_data for item_key, item_data in local_json_data["items"].items()}
+                        self.__update_db_from_json(updates)
+                    else:
+                        self.__save_json_file(json_data_new)
+                        print("JSON updated from Database.") 
+                else:
+                    print("No 'updates' timestamp found in the JSON file.")
+                    self.__save_json_file(json_data_new)
+            else:
+                # print("Data is the same, no need to sync.")
+                return local_json_data, -1
+        else:
+            print("Failed to fetch data from the database or load JSON file.")
+            print(f"DB DATA: {data_from_db} | JSON DATA: {local_json_data}")
+            return None
+
+        return local_json_data
+    
+    def update_inventory(self, item_key, new_inventory):
+        # Update database
+        if cn.connect():
+            update_statement = f"UPDATE tbl_inventory_live SET total_item_amount = {new_inventory} WHERE item_key = '{item_key}'"
+            if cn.insert([update_statement]):
+                print(f"Inventory for item with key '{item_key}' updated successfully in the database.")
+            else:
+                print(f"Failed to update inventory for item with key '{item_key}' in the database.")
+            cn.disconnect()
+        else:
+            print("Failed to connect to the database.")
+
+        # Update JSON file
+        local_json_data = self.__load_json_file()
+        if local_json_data:
+            if item_key in local_json_data["items"]:
+                local_json_data["items"][item_key]["inventory"] = new_inventory
+                self.__save_json_file(local_json_data)
+                print(f"Inventory for item with key '{item_key}' updated successfully in the JSON file.")
+            else:
+                print(f"Item with key '{item_key}' not found in the JSON data.")
+        else:
+            print("Failed to load JSON data.")
+
+
+class Sales:
+    pass
+
 
 class Environment_Variables:
     def __init__(self, env) -> None:
@@ -375,6 +770,7 @@ class Environment_Variables:
         self.raw_json_data = data_parser_env_data.items
         self.window_configuration = data_parser_env_data.items[env]["display"]["window_configuration"]
         self.record_path = data_parser_env_data.items[env]["data_file_path"]["record_csv"]
+        self.coin_path = data_parser_env_data.items[env]["data_file_path"]["coins_json"]
         self.item_path = data_parser_env_data.items[env]["data_file_path"]["items_json"]
         self.grid_path = data_parser_env_data.items[env]["data_file_path"]["grids_json"]
         self.qr_path = data_parser_env_data.items[env]["data_file_path"]["qr_png"]
@@ -388,11 +784,27 @@ class Environment_Variables:
         self.coin_payment_en = data_parser_env_data.items[env]["payment_method"]["coin"]
         self.coin_change_en = data_parser_env_data.items[env]["change_enable"]["coin"]
         self.gcash_change_en = data_parser_env_data.items[env]["change_enable"]["gcash"]
+        self.coin_balance_reset = data_parser_env_data.items[env]["balance_reset"]["coin"]
+        self.gcash_balance_reset = data_parser_env_data.items[env]["balance_reset"]["gcash"]
 
 
 # Live console routine
-def get_item_desc():  
-    global str_money
+def background_proc():
+    while True:
+        time.sleep(4)
+        # coins_management.sync()
+        data, flag = items_handler.sync()
+        if not flag == -1:
+                items, grids = get_json_data(item_path, grid_path)
+                update_grid(items["items"], grids["buttons"])
+            
+        
+    
+
+def coin_module_engine():  
+    global str_money, data
+    x = ""
+    # coin_module.get_updates()
     # while True:
     #     x = input("name of the item: ")
     #     if x == "x":
@@ -402,16 +814,62 @@ def get_item_desc():
     #     else:
     #         refresh_money(x)
     while True:
-        x = input("Input Money: ")
-        if x.isnumeric():
-            # items, grids = get_json_data(item_path, grid_path)
-            # update_grid(items["items"], grids["buttons"])
-            # window.update()
+        x = coin_module.get_update()
+        # x = input("Input Money: ")
+        if x.startswith("COINS"):
+            print(x)
+            x = x.split(":")[1]
             refresh_money(x)
+            str_money = x
         elif x.upper() == "STOP":
             break
         else:
             pass
+        time.sleep(0.01)
+
+
+def transaction_routine(self:Transaction):
+    #first try to upload all lapsed (offline) data to database
+    try:
+        file = CSV_Interface(record_path)
+        file.parse()
+        if file.items and cn.connect():
+            logger.debug(cn.log)
+            for item in file.items:
+                print(item)
+                self.transaction_info.publish_database(item)
+                # Transaction_Info.publish_database(None, item)
+            cn.disconnect()
+            file.clear()
+    except:
+        pass
+    finally:
+        cn.connect()
+        try:
+            #try to execute transaction via database, log transaction online
+            if self.transaction_info.publish_database():
+                print("Transaction Succesfully Published Online")
+                servo_kit.set_index(int(self.key))
+                servo_kit.dispense()
+                clear_money()   
+                self.end_transaction.dispense_change()
+                self.__proceed_lock = False
+                cn.disconnect()
+            #if database transaction failed, log transaction offline
+            else:
+                self.transaction_info.publish()
+                print("Unccesfull DB publish")
+                print("Transaction Published Offline")
+                servo_kit.set_index(int(self.key))
+                servo_kit.dispense()
+                clear_money()   
+                self.end_transaction.dispense_change()
+                self.__proceed_lock = False
+        except Exception as error:
+            print(error)
+            cn.disconnect()
+        cn.disconnect()
+    cn.disconnect()
 
 
 def app_engine():
@@ -480,7 +938,7 @@ def draw_grid(items:dict,grids:dict, parent_process):
         r = grids[key]['row']
         c = grids[key]['column']
         stky = grids[key]['sticky']
-        en:bool = grids[key]['enabled']
+        en:bool = item['available']
         bg = 'white'
 
          # Item Description Formatter
@@ -523,7 +981,7 @@ def update_grid(items:dict,grids:dict):
         r = grids[key]['row']
         c = grids[key]['column']
         stky = grids[key]['sticky']
-        en:bool = grids[key]['enabled']
+        en:bool = item['available']
         bg = 'white'
 
          # Item Description Formatter
@@ -574,7 +1032,39 @@ def refresh_money(money):
     else:
         print("No instance of payment page")
 
-        
+
+def add_money(money_to_add):
+    global str_money, payment_page_obj
+    str_money = str(int(str_money) + int(money_to_add))
+    if isinstance(payment_page_obj, Payment_Page):
+        try:
+            window.update()
+            payment_page_obj.refresh()
+        except:
+            print("Payment_Page_is not active")
+        else:
+            #command if there are no errors raised
+            pass
+    else:
+        print("No instance of payment page")
+
+
+def clear_money():
+
+    global str_money, payment_page_obj
+    str_money ="0"
+    if isinstance(payment_page_obj, Payment_Page):
+        try:
+            window.update()
+            payment_page_obj.refresh()
+        except:
+            print("Payment_Page_is not active")
+        else:
+            #command if there are no errors raised
+            pass
+    else:
+        print("No instance of payment page")
+
     
 
 
@@ -583,6 +1073,7 @@ def refresh_money(money):
 env_setup = Environment_Variables(ENV)
 window_configuration = env_setup.window_configuration
 record_path = env_setup.record_path
+coin_path = env_setup.coin_path
 item_path = env_setup.item_path
 grid_path = env_setup.grid_path
 qr_path = env_setup.qr_path
@@ -596,6 +1087,10 @@ gcash_payment = env_setup.gcash_payment_en
 coin_payment = env_setup.coin_payment_en
 gcash_change = env_setup.gcash_change_en
 coin_change = env_setup.coin_change_en
+coin_balance_reset = env_setup.coin_balance_reset
+gcash_balance_reset = env_setup.gcash_balance_reset
+
+
 
 print(path_fix(record_path))
 print(path_fix(qr_path))
@@ -604,18 +1099,34 @@ print(path_fix(qr_path))
 
 window_configuration = env_setup.window_configuration #-alpha, -transparentcolor, -disabled, -fullscreen, -toolwindow, or -topmost -zoomed 
 
-# INITIALIZE SERIAL COMMUNICATION WITH ARDUINO
 
-coin_module = Coin_Slot_Control(coin_dev_addr,9600, 1.0)
-gcash_module = Gcash_Control(gcash_dev_addr,9600, 1.0)
+# INITIALIZE SERIAL COMMUNICATION WITH ARDUINO
+coin_module = Coin_Slot_Control(coin_dev_addr,115200)
+gcash_module = Gcash_Control(gcash_dev_addr,9600)
+
 
 # INITIALIZE COMMUNICATION WITH SERVO MOTOR CONTORLLER
-
 servo_kit = Servo_Control()
 
+
+# INITIALIZE LOGGING SERVICE
 logger = Logging(__software_name__, log_path)
 logger.debug("Sofware Startup")
 
+cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72", sslmode="require", sslcert="database/client-cert.pem", sslkey="database/client-key.pem")
+
+logger.debug(cn.log)
+
+# INITIALIZE ITEM HANDLER DAEMON / SERVICE
+items_handler = Items_Handler(item_path)
+
+# INITIALIZE COIN HANDLER DAEMON / SERVICE\
+# print(coin_path)
+# coins_management = Coin_Manager(coin_path)
+
+
+termninal_thread02 = threading.Thread(target=background_proc, daemon= True)
+termninal_thread02.start()
 
 window = tk.Tk()
 window.title("INDUSTRIAL FASTENERS VENDING MACHINE")
@@ -627,9 +1138,6 @@ selection_frame.pack(expand=True)
 selection_frame.columnconfigure(0, weight=0)
 selection_frame.rowconfigure(0, weight=1)
 
-logger.debug("Started thread: live money getter.")
-termninal_thread = threading.Thread(target=get_item_desc, daemon=True)
-termninal_thread.start()
 
 # This function is called to read data from json files that is used as item database for our application
 logger.debug("Fetching info from, item and grid json files.")
@@ -660,6 +1168,7 @@ if not gcash_module.start_connection():
 
 # START COMMUNICATION WITH SERVOKIT
 if not servo_kit.start_connection():
+    servo_kit.set_mode("triggered", 21, "RISING")
     if servo_bypass:
         logger.warn("Communication with ServoKit Failed System will STILL continue without this feature!")
         warning_box("Communication with ServoKit Failed\nSystem will STILL continue without this feature!")
@@ -667,6 +1176,13 @@ if not servo_kit.start_connection():
         logger.error("Communication with ServoKit Failed System will NOT continue without this feature!")
         print("Communication with ServoKit Failed\nSystem will NOT continue without this feature!\n")
         exit()
+
+
+
+
+logger.debug("Started thread: live money getter.")
+termninal_thread01 = threading.Thread(target=coin_module_engine, daemon=True)
+termninal_thread01.start()
 
 
 

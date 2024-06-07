@@ -9,6 +9,8 @@ import aiohttp
 import asyncio
 import json
 
+from lib.postgresql_adapter import Data_Base_Connection
+
 __software_name__ = "helper_library"
 
 class Logging:
@@ -54,11 +56,10 @@ class Data_Parser:
             print(f"An error occurred while updating data from JSON file: {e}")
 
 
-class Data_Writer:
+class CSV_Interface:
     def __init__(self,file_path) -> None:
         self.file_path = file_path
         self.items = []
-        print(self.items)
         self.is_succes =False
 
     def create_csv(self) -> bool:
@@ -66,18 +67,16 @@ class Data_Writer:
             with open(self.file_path, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerows(self.items)
-            self.is_succes = True   
+            self.is_succes = True
+            self.items = []
             return self.is_succes
-        except:
-            print("CSV Creation Failed")
+        except Exception as e:
+            print(f"CSV Creation Failed: {e}")
+            self.items = []
             return self.is_succes
         
     
-    def append_to_csv(self) -> bool:
-        # with open(self.file_path, mode='a', newline='') as file:
-        #     writer = csv.writer(file)
-        #     print(self.items)
-        #     writer.writerows(self.items)
+    def insert(self) -> bool:
         try:
             with open(self.file_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
@@ -85,10 +84,77 @@ class Data_Writer:
                 writer.writerow(self.items)
             self.is_succes = True
             print(self.items)
+            self.items = []
             return self.is_succes
+        except Exception as e:
+            print(f"CSV Update Failed: {e}")
+            self.items = []
+            return self.is_succes
+    
+    def parse(self) -> bool:
+        try:
+            with open(self.file_path, mode='r', newline='') as file:
+                reader = csv.reader(file)
+                self.items = [row for row in reader]
+            self.is_succes = True
+            return self.is_succes
+        except Exception as e:
+            print(f"CSV Parsing Failed: {e}")
+            self.items = []
+            return self.is_succes
+    
+    def clear(self) -> bool:
+        try:
+            with open(self.file_path, mode='w', newline='') as file:
+                # Opening the file in 'w' mode clears its contents
+                pass
+            self.is_succes = True
+            return self.is_succes
+        except Exception as e:
+            print(f"CSV Clearing Failed: {e}")
+            return self.is_succes
+
+
+
+class Data_Base_Interface:
+    def __init__(self, user, password, database, host) -> None:
+        self.database = database
+        self.items = []
+        self.log = ""
+        self.is_succes =False
+        try:
+            # cn = Data_Base_Connection("client","password", "vending-machine", "35.221.157.72")
+            self.cn = Data_Base_Connection(user, password, database, host)
+            self.is_succes = True
         except:
-            print("CSV Update Failed")
-            return self.is_succes
+            self.is_succes = False
+
+    def insert(self, table) -> bool:
+        if table:
+            try:
+                self.cn.insert()
+
+
+                # with open(self.file_path, mode='a', newline='') as file:
+                #     writer = csv.writer(file)
+                #     print(self.items)
+                #     writer.writerow(self.items)
+                # self.is_succes = True
+                # print(self.items)
+                # return self.is_succes
+            except:
+                print("CSV Update Failed")
+                return self.is_succes
+        else:
+            self.log = "Error no database table specified"
+            print(self.log)
+
+
+
+
+
+
+
 
 
 class App_Config_Parser:
