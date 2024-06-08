@@ -43,6 +43,131 @@ data = ""
 #     def dispense2(self, index):
 #         pass
 
+# class Servo_Control():
+#     def __init__(self) -> None:
+#         self.is_connected = False
+#         self.index = 0
+#         self.__mode = "timed"
+#         self.__stop_rotate = False
+#         self.set_mode()
+
+        
+#     def start_connection(self) -> bool:
+#         try:
+#             from adafruit_servokit import ServoKit
+#             self.kit = ServoKit(channels=16)
+#             self.is_connected = True
+#             print("ServoKit OK")
+#         except:
+#             from dummy_servokit import ServoKit
+#             print("ServoKit Failed")
+#         return self.is_connected
+    
+#     def set_mode(self, mode:str = "timed", trigger_pin:int = None, trigger_event:str = "RISING"):
+#         if mode == "triggered":
+#             try:
+#                 if trigger_pin is None:
+#                     raise ValueError("The trigger_pin cannot be None")
+
+#                 if not isinstance(trigger_pin, int):
+#                     raise TypeError("The trigger_pin must be an integer")
+
+#                 if not (1 <= trigger_pin <= 28):
+#                     raise ValueError("The trigger_pin must be an integer between 1 and 28 inclusive")
+
+#                 # Further code that uses trigger_pin if it is valid
+#                 print(f"trigger_pin is valid: {trigger_pin}")
+
+#                 try:
+#                     import RPi.GPIO as GPIO
+#                     GPIO.setmode(GPIO.BCM)
+#                     INPUT_PIN = trigger_pin
+#                     GPIO.setup(INPUT_PIN, GPIO.IN)
+#                     event_mapping = {
+#                         "RISING": GPIO.RISING,
+#                         "FALLING": GPIO.FALLING,
+#                         "BOTH": GPIO.BOTH
+#                     }
+
+#                     if trigger_event not in event_mapping:
+#                         raise ValueError(f"Invalid trigger_event: {trigger_event}")
+
+#                     gpio_event = event_mapping[trigger_event]
+#                     GPIO.add_event_detect(INPUT_PIN, gpio_event, callback=self.__set_stop_rotate, bouncetime=50)
+#                     self.__mode = mode
+#                 except Exception as e:
+#                     try:
+#                         GPIO.cleanup()
+#                     except: 
+#                         pass
+#                     print(f"An error occurred: {e}")
+#                     print(f"GPIO setting failed'")
+
+#             except Exception as e:
+#                 try:
+#                     GPIO.cleanup()
+#                 except: 
+#                     pass
+#                 print(f"An error occurred: {e}")
+#                 print(f"trigger mode set to default: 'timed'")
+#         else:
+#             try:
+#                 GPIO.cleanup()
+#             except: 
+#                 pass
+                
+            
+#     def __set_stop_rotate(self):
+#         self.__stop_rotate = True
+    
+#     def set_index(self, index:int):
+#         if not (0 <= index <= 15):
+#             raise ValueError("Index must be within 0-15")
+#         self.index = index
+            
+#     def dispense(self):
+#         if self.is_connected:
+#             if self.__mode == "timed":
+#                 self.kit.servo[self.index].angle = 90
+#                 time.sleep(3)
+#                 self.kit.servo[self.index].angle = 0
+#                 time.sleep(1)
+#                 self.kit.servo[self.index].angle = 90
+#             if self.__mode == "triggered":
+#                 while True:
+#                     if self.__stop_rotate:
+#                         self.kit.servo[self.index].angle = 90
+#                         print("Stopped Rotation")
+#                         time.sleep(0.1)
+#                         break
+#                     else:
+#                         self.kit.servo[self.index].angle = 0
+#         else:
+#             if self.__mode == "timed":
+#                 print("Simulting...")
+#                 print("Rotate 90")
+#                 print("Sleep 3")
+#                 time.sleep(3)
+#                 print("Rotate  0")
+#                 print("Sleep 1")
+#                 time.sleep(1)
+#                 print("Rotate 90")
+#             if self.__mode == "triggered":
+#                 print("Simulting...")
+#                 while True:
+#                     if self.__stop_rotate:
+#                         print("Rotate 90")
+#                         print("Stopped Rotation")
+#                         self.__stop_rotate = False
+#                         time.sleep(0.1)
+#                         break
+#                     else:
+#                         self.kit.servo[self.index].angle = 0
+
+        
+#     def dispense2(self, index):
+#         pass
+
 class Servo_Control():
     def __init__(self) -> None:
         self.is_connected = False
@@ -51,7 +176,6 @@ class Servo_Control():
         self.__stop_rotate = False
         self.set_mode()
 
-        
     def start_connection(self) -> bool:
         try:
             from adafruit_servokit import ServoKit
@@ -62,27 +186,29 @@ class Servo_Control():
             from dummy_servokit import ServoKit
             print("ServoKit Failed")
         return self.is_connected
-    
-    def set_mode(self, mode:str = "timed", trigger_pin:int = None, trigger_event:str = "RISING"):
+
+    def set_mode(self, mode: str = "timed", trigger_pins: list = None, trigger_event: str = "RISING"):
         if mode == "triggered":
             try:
-                if trigger_pin is None:
-                    raise ValueError("The trigger_pin cannot be None")
+                if trigger_pins is None:
+                    raise ValueError("The trigger_pins cannot be None")
 
-                if not isinstance(trigger_pin, int):
-                    raise TypeError("The trigger_pin must be an integer")
+                if not isinstance(trigger_pins, list):
+                    raise TypeError("The trigger_pins must be a list of integers")
 
-                if not (1 <= trigger_pin <= 28):
-                    raise ValueError("The trigger_pin must be an integer between 1 and 28 inclusive")
+                for pin in trigger_pins:
+                    if not isinstance(pin, int):
+                        raise TypeError("Each trigger_pin must be an integer")
+                    if not (1 <= pin <= 28):
+                        raise ValueError("Each trigger_pin must be an integer between 1 and 28 inclusive")
 
-                # Further code that uses trigger_pin if it is valid
-                print(f"trigger_pin is valid: {trigger_pin}")
+                # Further code that uses trigger_pins if they are valid
+                print(f"trigger_pins are valid: {trigger_pins}")
 
                 try:
                     import RPi.GPIO as GPIO
                     GPIO.setmode(GPIO.BCM)
-                    INPUT_PIN = trigger_pin
-                    GPIO.setup(INPUT_PIN, GPIO.IN)
+
                     event_mapping = {
                         "RISING": GPIO.RISING,
                         "FALLING": GPIO.FALLING,
@@ -93,12 +219,16 @@ class Servo_Control():
                         raise ValueError(f"Invalid trigger_event: {trigger_event}")
 
                     gpio_event = event_mapping[trigger_event]
-                    GPIO.add_event_detect(INPUT_PIN, gpio_event, callback=self.__set_stop_rotate, bouncetime=50)
+
+                    for pin in trigger_pins:
+                        GPIO.setup(pin, GPIO.IN)
+                        GPIO.add_event_detect(pin, gpio_event, callback=self.__set_stop_rotate, bouncetime=50)
+
                     self.__mode = mode
                 except Exception as e:
                     try:
                         GPIO.cleanup()
-                    except: 
+                    except:
                         pass
                     print(f"An error occurred: {e}")
                     print(f"GPIO setting failed'")
@@ -106,25 +236,24 @@ class Servo_Control():
             except Exception as e:
                 try:
                     GPIO.cleanup()
-                except: 
+                except:
                     pass
                 print(f"An error occurred: {e}")
                 print(f"trigger mode set to default: 'timed'")
         else:
             try:
                 GPIO.cleanup()
-            except: 
+            except:
                 pass
-                
-            
-    def __set_stop_rotate(self):
+
+    def __set_stop_rotate(self, channel):
         self.__stop_rotate = True
-    
-    def set_index(self, index:int):
+
+    def set_index(self, index: int):
         if not (0 <= index <= 15):
             raise ValueError("Index must be within 0-15")
         self.index = index
-            
+
     def dispense(self):
         if self.is_connected:
             if self.__mode == "timed":
@@ -144,29 +273,26 @@ class Servo_Control():
                         self.kit.servo[self.index].angle = 0
         else:
             if self.__mode == "timed":
-                print("Simulting...")
+                print("Simulating...")
                 print("Rotate 90")
                 print("Sleep 3")
                 time.sleep(3)
-                print("Rotate  0")
+                print("Rotate 0")
                 print("Sleep 1")
                 time.sleep(1)
                 print("Rotate 90")
             if self.__mode == "triggered":
-                print("Simulting...")
+                print("Simulating...")
                 while True:
                     if self.__stop_rotate:
                         print("Rotate 90")
                         print("Stopped Rotation")
-                        self.__stop_rotate = False
                         time.sleep(0.1)
                         break
                     else:
-                        self.kit.servo[self.index].angle = 0
+                        print("Rotate 90")
+                        time.sleep(0.5)
 
-        
-    def dispense2(self, index):
-        pass
 
 
 class Coin_Slot_Control():
@@ -226,13 +352,18 @@ class Coin_Slot_Control():
     def data(self):
         return self._data
     
-    def dispense_change(self) -> bool:
-        amount = self.change
-        print(f"Called function dispense_change at: {self.__class__.__name__}")
-        print(f"No current procedure")
-        print("j")
-        print(f"Simulation: Dispensing {amount}")
-        return True
+    def send_update(self, data:str, reset_input_buffer_at_start = False) -> bool:
+        if self.is_connected:
+            try: 
+                self.ser.write(data.encode())
+                print(data)
+                return True
+            except Exception as e:
+                print(f"Error on serial print with error: {e} and msg: {data}")
+                return False
+        else: 
+            print(f"NO CONNECTION TO MODULE | Mock serial print: {data.encode()}")
+            return True
 
     
 class Gcash_Control(Coin_Slot_Control):

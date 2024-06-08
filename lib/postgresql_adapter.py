@@ -43,7 +43,6 @@ class Data_Base_Connection:
             cursor.execute("SELECT version();")
             record = cursor.fetchone()
             self.log = (f"PostgreSQL connection at {self.__host} | Connected to {record}")
-            print(self.log)
             self.connection_status = True
             cursor.close()
             return self.connection_status
@@ -64,14 +63,12 @@ class Data_Base_Connection:
         self.log = "Called Query Routine"
         try:
             cursor = self.connection.cursor()
-            print(query_statement)
             cursor.execute(query_statement)
             rows = cursor.fetchall()
             cursor.close()
             return rows
         except (Exception, Error) as error:
             self.log  = (f"Error while query to PostgreSQL with error: {error}")
-            print(self.log)
             return []
     
     def insert(self, insert_statements:list) -> bool:
@@ -90,7 +87,6 @@ class Data_Base_Connection:
             return True
         except (Exception, Error) as error:
             self.log = f"Error while executing batch insert to PostgreSQL with error: {error}"
-            print(self.log)
             self.connection.rollback()
             cursor.close()
             return False
