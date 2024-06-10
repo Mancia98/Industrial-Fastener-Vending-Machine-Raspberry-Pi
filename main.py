@@ -42,6 +42,8 @@ payment_page_obj = object
 
 coin_change_servo_stop = False
 
+coin_module_run = False
+
 
 
 
@@ -808,13 +810,21 @@ def background_proc():
         if not flag == -1:
                 items, grids = get_json_data(item_path, grid_path)
                 update_grid(items["items"], grids["buttons"])
-            
-        
+                         
+
+def coin_module_engine_stop():  
+    global coin_change_servo_stop, coin_module_run
+    coin_module_run = False
+    
+def coin_module_engine_start():
+    global coin_change_servo_stop, coin_module_run
+    coin_module_run = True
+    module_coin_thread.start()
     
 def coin_module_engine():  
-    global str_money, coin_change_servo_stop
+    global str_money, coin_change_servo_stop, coin_module_run
     x = ""
-    while True:
+    while coin_module_run:
         x = coin_module.get_update()
         # x = input("Input Money: ")
         if x.startswith("COINS"):
@@ -826,8 +836,7 @@ def coin_module_engine():
             print(x)
             x = x.split(":")[1]
             if x == "DONE":
-                coin_change_servo_stop = True
-        
+                coin_change_servo_stop = True       
         elif x.upper() == "STOP":
             break
         else:
@@ -1209,10 +1218,10 @@ if not servo_kit.start_connection():
 
 
 logger.debug("Started thread: live money getter.")
-termninal_thread01 = threading.Thread(target=coin_module_engine, daemon=True)
-termninal_thread01.start()
-termninal_thread02 = threading.Thread(target=gcash_module_engine, daemon=True)
-termninal_thread02.start()
+module_coin_thread = threading.Thread(target=coin_module_engine, daemon=True)
+# termninal_thread01.start()
+module_gcash_thread = threading.Thread(target=gcash_module_engine, daemon=True)
+# termninal_thread02.start()
 
 
 
