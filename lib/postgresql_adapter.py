@@ -87,8 +87,11 @@ class Data_Base_Connection:
             return True
         except (Exception, Error) as error:
             self.log = f"Error while executing batch insert to PostgreSQL with error: {error}"
-            self.connection.rollback()
-            cursor.close()
+            try:
+                self.connection.rollback()
+                cursor.close()
+            except:
+                pass
             return False
 
     def disconnect(self):

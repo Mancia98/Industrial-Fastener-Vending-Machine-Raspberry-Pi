@@ -44,10 +44,11 @@ coin_change_servo_stop = False
 
 coin_module_run = False
 
+sync_halt = False
 
 
 
-str_money = "50"
+str_money = "0"
 
 thread_run_flag =  False
 
@@ -104,7 +105,8 @@ class Payment_Page:
         self.lbl_pay_title = "PLEASE INSERT COINS..."
         pass
     def show_pay_page(self):
-        global str_money, payment_page_obj, running_session_id, items, grids
+        global str_money, payment_page_obj, running_session_id, items, grids, sync_halt
+        sync_halt = True
         items, grids = get_json_data(item_path, grid_path)
         print(f"Called function show_pay_page | Class with, ID: {self.key} Items: {items['items'][self.key]}")
         self.item_name = items['items'][self.key]['item_name']
@@ -129,7 +131,9 @@ class Payment_Page:
             data_frame = tk.LabelFrame(pay_page, text=self.lbl_pay_method, font=('Arial', 20))
             data_frame.pack(expand=True)
             if not self.flg_is_cash:
-                img_obg = ImageTk.PhotoImage(Image.open(qr_path))
+                # img_obg = ImageTk.PhotoImage(Image.open(qr_path))
+                resized_img = Image.open(qr_path).resize((qr_size[0], qr_size[1]))
+                img_obg = ImageTk.PhotoImage(resized_img)
                 label = tk.Label(data_frame, image=img_obg)
                 label.image = img_obg
                 label.pack()
@@ -208,6 +212,8 @@ class Transaction(Singleton):
         self.low_change_warn = False    
     
     def proceed(self):
+        global sync_halt
+        sync_halt = True
         if self.payment_type == "COINS" or self.payment_type == "CASH":
             change_enable = coin_change
         else:
@@ -254,10 +260,12 @@ class Transaction(Singleton):
             warning_box("Cannot Start new Transaction\nPlease close all running transactions")
                 
     def close_page(self):
+        global sync_halt
         Transaction.clear_instance()
         Transaction_Info.clear_instance()
         Singleton.clear_instance()
         print(f"Close page routine at: {self.__class__.__name__}")
+        sync_halt = False
 
 
 class Transaction_Info(Singleton):
@@ -366,13 +374,14 @@ class Transaction_Info(Singleton):
                                 '{payload[13]}'::INET
                             );
                             """
-        if cn.insert(insert_statement):
+        print("here")                    
+        if db_records_communication_obj.insert(insert_statement):
             print("PASS TRANSACTION ID DB UPLOAD")
-            print(cn.log)
+            print(db_records_communication_obj.log)
             return True
         else:
             print("PASS TRANSACTION ID FAILED DB UPLOAD")
-            print(cn.log)
+            print(db_records_communication_obj.log)
             return False
 
     def close_page(self):
@@ -394,17 +403,23 @@ class End_Transaction:
         self.change_page.attributes(window_configuration, True)
         change_frame = tk.LabelFrame(self.change_page, text="ITEM DISPENSED SUCCESSFULLY", font=('Arial', 20))
         change_frame.pack(expand=True)
+        ############################### CHANGE ENABLED ROUTINE
         text = "Tap \"DONE\" button to dispense your change."
-        command = self.dispense_finish
+        left_command = self.dispense_finish
+        right_command = self.retain_balance_cmd
+        right_command_lbl = "RETAIN BALANCE"
         text_change = "Your change: " + str(coins_management.change)
+        ############################### CHANGE DISABLED ROUTINE
         if not self.change_enable:
             text = "Tap \"DONE\" No change is availble for this payment type."
-            command = self.finish_transaction
-            text_change = "No Change"
+            left_command = self.finish_transaction
+            right_command = lambda: None
+            right_command_lbl = ""
+            text_change = "Remaining balance is cleared"
         tap_lb = tk.Label(change_frame, text=text)
         change_lb = tk.Label(change_frame, text=text_change)
-        back = tk.Button(self.change_page, text="RETAIN BALANCE", width=15, height=3, bg="#FF4040", command=self.retain_balance_cmd)
-        done = tk.Button(self.change_page, text="DONE", width=15, height=3, bg="#46FF40", command=command)
+        done = tk.Button(self.change_page, text="DONE", width=15, height=3, bg="#46FF40", command=left_command)
+        back = tk.Button(self.change_page, text=right_command_lbl, width=15, height=3, bg="#FF4040", command=right_command)
         tap_lb.pack()
         change_lb.pack()
         back.pack(side='left', padx=15, pady=15)
@@ -412,6 +427,7 @@ class End_Transaction:
     
     def retain_balance_cmd(self):
         self.retain_balance_flg = True
+        print("RETAIN BALANCE EVENT BUTTON")
         self.finish_transaction()
     
     def dispense_finish(self):
@@ -429,11 +445,18 @@ class End_Transaction:
 
     
     def finish_transaction(self):
+        global sync_halt
+        if not self.retain_balance_flg:   
+            clear_money()
+        else:
+            clear_money()
+            add_money(coins_management.change)
         self.parent_obj.close_page()
         self.change_page.destroy()
         destroy_all()
         items, grids = get_json_data(item_path, grid_path)
         update_grid(items["items"], grids["buttons"])
+        sync_halt = False
         # if isinstance(payment_page_obj, Payment_Page):
         #     try:
         #         window.update()
@@ -491,19 +514,19 @@ class Coin_Handler:
             json.dump(data, json_file, indent=4)
 
     def __fetch_data_from_db(self):
-        if cn.connect():
+        if db_coin_communication_obj.connect():
             query_statement = (
                 r"SELECT * FROM tbl_coin WHERE parent_key = '0';"
                 )
-            data_from_db = cn.query(query_statement)
-            cn.disconnect()
+            data_from_db = db_coin_communication_obj.query(query_statement)
+            db_coin_communication_obj.disconnect()
             return data_from_db
         else:
             print("Failed to connect to the database.")
             return None
             
     def __update_db_from_json(self, updates: dict):
-        if cn.connect():
+        if db_coin_communication_obj.connect():
             update_statement = f"""
             UPDATE tbl_coin
             SET coin_count_01 = {updates.get('1')},
@@ -512,11 +535,11 @@ class Coin_Handler:
                 coin_count_20 = {updates.get('20')}
             WHERE parent_key = '0'
             """
-            if cn.insert(update_statement):
+            if db_coin_communication_obj.insert(update_statement):
                     print("Database updated successfully.")
             else:
                 print("Failed to update the database.")
-            cn.disconnect()
+            db_coin_communication_obj.disconnect()
         else:
             print("Failed to connect to the database.")
     
@@ -559,8 +582,8 @@ class Coin_Handler:
                 return local_json_data, -1
         else:
             print("Failed to fetch data from the database or load JSON file.")
-            print(f"DB DATA: {data_from_db} | JSON DATA: {local_json_data}")
-            return None
+            # print(f"DB DATA: {data_from_db} | JSON DATA: {local_json_data}")
+            return local_json_data, 0
 
         return local_json_data
    
@@ -611,17 +634,22 @@ class Coin_Handler:
             return False
     
     def execute_dispense_change_hardware(self):
-        for items in self.change_dict.items():
-            print(items)
-            data = (f"{str(items[0])}:{str(items[1])}")
-            if coin_module.send_update(data):
-                coin_change_servo_stop = False
-                start_time = time.time()  # Record the start time
-                target_time = start_time + 60  # One minute later
-                while (not coin_change_servo_stop) and time.time() < target_time:
-                    pass
-            else:
+        coin_module_engine_stop()
+        # for items in self.change_dict.items():
+        #     print(items)
+        #     data = (f"{str(items[0])}:{str(items[1])}")
+        data_list = []
+        for key, value in self.change_dict.items():
+            data_list.append(f"{key}:{value}")
+        data = ",".join(data_list)
+        if coin_module.send_update(data):
+            coin_change_servo_stop = False
+            start_time = time.time()  # Record the start time
+            target_time = start_time + 60  # One minute later
+            while (not coin_change_servo_stop) and time.time() < target_time:
                 pass
+        else:
+            pass
     
         
             
@@ -670,7 +698,7 @@ class Items_Handler:
             json.dump(data, json_file, indent=4)
 
     def __fetch_data_from_db(self):
-        if cn.connect():
+        if db_items_communication_obj.connect():
             query_statement = (
                 r"SELECT tbl_inventory_writable_view.item_key, tbl_inventory_writable_view.item_name, "
                 r"tbl_item_detail.item_desc, tbl_inventory_writable_view.total_item_amount, "
@@ -684,33 +712,34 @@ class Items_Handler:
                 r"WHEN '9' THEN 9 WHEN '10' THEN 10 WHEN '11' THEN 11 ELSE 9999 END "
                 r"ELSE 10000 + ITEM_KEY::int END;"
             )
-            data_from_db = cn.query(query_statement)
-            cn.disconnect()
+            data_from_db = db_items_communication_obj.query(query_statement)
+            db_items_communication_obj.disconnect()
             return data_from_db
         else:
             print("Failed to connect to the database.")
             return None
 
     def __update_db_from_json(self, updates):
-        if cn.connect():
+        if db_items_communication_obj.connect():
             update_statements = [
                 f"UPDATE tbl_inventory_live SET total_item_amount = {item_data['inventory']} WHERE item_key = '{item_key}'"
                 for item_key, item_data in updates.items()
             ]
-            if cn.insert(update_statements):
+            if db_items_communication_obj.insert(update_statements):
                 print("Database updated successfully.")
             else:
                 print("Failed to update the database.")
-            cn.disconnect()
+            db_items_communication_obj.disconnect()
         else:
             print("Failed to connect to the database.")
 
     def sync(self):
         data_from_db = self.__fetch_data_from_db()
         local_json_data = self.__load_json_file()
-
+        # print("ITEM SYNC: FIRST IF BLOCK")
         if data_from_db and local_json_data:
             json_data_new = {"items": {}}
+            # print("ITEM SYNC: FIRST IF BLOCK | FOR LOOP")
             for row in data_from_db:
                 item_key = row[0]
                 json_data_new["items"][item_key] = {
@@ -721,40 +750,47 @@ class Items_Handler:
                     "inventory": row[3],
                     "available": row[5]
                 }
+            # print("ITEM SYNC: FIRST IF BLOCK | OUT FOR LOOP")
             db_last_updated = max([row[6] for row in data_from_db])
 
+            # print("ITEM SYNC: SECOND IF BLOCK")
             if json_data_new["items"] != local_json_data["items"]:
-                print(local_json_data)
+                # print(local_json_data)
                 if "updates" in local_json_data:
+                    # print("ITEM SYNC: SECOND IF BLOCK | FIRST NESTED IF")
                     json_last_updated = datetime.strptime(local_json_data["updates"], "%Y-%m-%d %H:%M:%S")
                     if json_last_updated > db_last_updated:
+                        # print("ITEM SYNC: SECOND IF BLOCK | FIRST NESTED IF | FIRST NESTED IF")
                         updates = {item_key: item_data for item_key, item_data in local_json_data["items"].items()}
+                        # print(updates)
                         self.__update_db_from_json(updates)
                     else:
                         self.__save_json_file(json_data_new)
-                        print("JSON updated from Database.") 
+                        # print("JSON updated from Database.") 
                 else:
                     print("No 'updates' timestamp found in the JSON file.")
                     self.__save_json_file(json_data_new)
+                # print("ITEM SYNC: END OF SECOND IF BLOCK")
             else:
                 # print("Data is the same, no need to sync.")
+
                 return local_json_data, -1
         else:
             print("Failed to fetch data from the database or load JSON file.")
-            print(f"DB DATA: {data_from_db} | JSON DATA: {local_json_data}")
+            # print(f"DB DATA: {data_from_db} | JSON DATA: {local_json_data}")
             return local_json_data, 0
 
         return local_json_data, 0
     
     def update_inventory(self, item_key, new_inventory):
         # Update database
-        if cn.connect():
+        if db_items_communication_obj.connect():
             update_statement = f"UPDATE tbl_inventory_live SET total_item_amount = {new_inventory} WHERE item_key = '{item_key}'"
-            if cn.insert([update_statement]):
+            if db_items_communication_obj.insert([update_statement]):
                 print(f"Inventory for item with key '{item_key}' updated successfully in the database.")
             else:
                 print(f"Failed to update inventory for item with key '{item_key}' in the database.")
-            cn.disconnect()
+            db_items_communication_obj.disconnect()
         else:
             print("Failed to connect to the database.")
 
@@ -782,6 +818,7 @@ class Environment_Variables:
         data_parser_env_data.update_from_json(item_path)
         self.raw_json_data = data_parser_env_data.items
         self.window_configuration = data_parser_env_data.items[env]["display"]["window_configuration"]
+        self.qr_size = data_parser_env_data.items[env]["display"]["QR_size"]
         self.record_path = data_parser_env_data.items[env]["data_file_path"]["record_csv"]
         self.coin_path = data_parser_env_data.items[env]["data_file_path"]["coins_json"]
         self.item_path = data_parser_env_data.items[env]["data_file_path"]["items_json"]
@@ -803,14 +840,23 @@ class Environment_Variables:
 
 # Live console routine
 def background_proc():
+    print("Background proc called")
+    global sync_halt
     while True:
-        time.sleep(8)
-        coins_management.sync()
-        data, flag = items_handler.sync()
-        if not flag == -1:
-                items, grids = get_json_data(item_path, grid_path)
-                update_grid(items["items"], grids["buttons"])
+        time.sleep(4)
+        print(f"proc status: {sync_halt}")
+        if not sync_halt:
+            # print("COIN SYNC")
+            coins_management.sync()
+            # print("ITEM SYNC")
+            data, flag = items_handler.sync()
+            temp = data
+            if not flag == -1:
+                    items, grids = get_json_data(item_path, grid_path)
+                    update_grid(items["items"], grids["buttons"])
                          
+
+
 
 def coin_module_engine_stop():  
     global coin_change_servo_stop, coin_module_run
@@ -836,12 +882,16 @@ def coin_module_engine():
             print(x)
             x = x.split(":")[1]
             if x == "DONE":
-                coin_change_servo_stop = True       
+                coin_change_servo_stop = True
         elif x.upper() == "STOP":
             break
         else:
             pass
+        if coin_module_run == False:
+            break
         time.sleep(0.01)
+
+
 
 def gcash_module_engine():  
     global str_money, data
@@ -865,29 +915,32 @@ def transaction_routine(self:Transaction):
     try:
         file = CSV_Interface(record_path)
         file.parse()
-        if file.items and cn.connect():
-            logger.debug(cn.log)
+        if file.items and db_records_communication_obj.connect():
+            logger.debug(db_records_communication_obj)
+            
             for item in file.items:
                 print(item)
                 self.transaction_info.publish_database(item)
                 # Transaction_Info.publish_database(None, item)
-            cn.disconnect()
+            db_records_communication_obj.disconnect()
             file.clear()
     except:
         pass
     finally:
-        cn.connect()
+        db_records_communication_obj.connect()
         try:
             #try to execute transaction via database, log transaction online
             if self.transaction_info.publish_database():
+                print("here?")
                 print("Transaction Succesfully Published Online")
                 servo_kit.set_index(int(self.key))
                 servo_kit.dispense()   
                 self.end_transaction.dispense_change()
-                if not self.end_transaction.retain_balance_flg:      
-                    clear_money()
+                # if not self.end_transaction.retain_balance_flg:
+                #     print(f"DB transaction: {self.end_transaction.retain_balance_flg}")     
+                #     clear_money()
                 self.__proceed_lock = False
-                cn.disconnect()
+                db_records_communication_obj.disconnect()
             #if database transaction failed, log transaction offline
             else:
                 self.transaction_info.publish()
@@ -896,33 +949,21 @@ def transaction_routine(self:Transaction):
                 servo_kit.set_index(int(self.key))
                 servo_kit.dispense()
                 self.end_transaction.dispense_change()
-                if not self.end_transaction.retain_balance_flg:      
-                    clear_money()
+                # if not self.end_transaction.retain_balance_flg:
+                #     print(f"LOCAL transaction: {self.end_transaction.retain_balance_flg}")         
+                #     clear_money()
                 self.__proceed_lock = False
         except Exception as error:
             print(error)
-            cn.disconnect()
-        cn.disconnect()
-    cn.disconnect()
+            db_records_communication_obj.disconnect()
+        db_records_communication_obj.disconnect()
+    db_records_communication_obj.disconnect()
 
 
 def app_engine():
     while True:
         pass
 
-
-def warning_box1(text = "Not Enough Money."):
-    warning_top = tk.Toplevel()
-    warning_top.title("Warning!")
-    # warning_top.geometry('250x100+510+280')
-    warning_top.attributes(window_configuration, True)
-
-    l1 = tk.Label(warning_top, image="::tk::icons::warning")
-    l1.grid(row=0, column=0, pady=(7, 0), padx=(10, 30), sticky="e")
-    l2 = tk.Label(warning_top,text=text)
-    l2.grid(row=0, column=1, columnspan=3, pady=(7, 10), sticky="w")
-    b1 = tk.Button(warning_top,text="Ok",command=warning_top.destroy,width = 10)
-    b1.grid(row=1, column=1, padx=(2, 35), sticky="w")
 
 
 def warning_box(text = "Not Enough Money."):
@@ -1084,6 +1125,7 @@ def add_money(money_to_add):
 
 
 def clear_money():
+    print("clear money called")
 
     global str_money, payment_page_obj
     str_money ="0"
@@ -1106,6 +1148,7 @@ def clear_money():
 
 env_setup = Environment_Variables(ENV)
 window_configuration = env_setup.window_configuration
+qr_size:list = env_setup.qr_size
 record_path = env_setup.record_path
 coin_path = env_setup.coin_path
 item_path = env_setup.item_path
@@ -1149,11 +1192,15 @@ logger.debug("Sofware Startup")
 
 # INITIALIZE DATABASE ADAPTER
 # cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72", sslmode="require", sslcert="database/client-cert.pem", sslkey="database/client-key.pem")
-cn = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72")
+db_coin_communication_obj = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72")
+db_items_communication_obj = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72")
+db_records_communication_obj = Data_Base_Connection("client","!@_420693.1416_CLIent", "vending-machine", "35.221.157.72")
 
 
 
-logger.debug(cn.log)
+logger.debug(db_coin_communication_obj.log)
+logger.debug(db_items_communication_obj.log)
+logger.debug(db_records_communication_obj)
 
 # INITIALIZE ITEM HANDLER DAEMON / SERVICE
 items_handler = Items_Handler(item_path)
@@ -1187,6 +1234,7 @@ draw_grid(items["items"], grids["buttons"], selection_frame)
 # START SERIAL COMMUNICATION WITH ARDUINO
 if not coin_module.start_connection():
     if coin_bypass:
+        str_money = "50"
         logger.warn("Communication with Coin Module Failed System will STILL continue without this feature!")
         warning_box("Communication with Coin Module Failed\nSystem will STILL continue without this feature!")
     else:
@@ -1205,7 +1253,7 @@ if not gcash_module.start_connection():
 
 # START COMMUNICATION WITH SERVOKIT
 if not servo_kit.start_connection():
-    servo_kit.set_mode("triggered", 21, "RISING")
+    servo_kit.set_mode("triggered", [19], "RISING")
     if servo_bypass:
         logger.warn("Communication with ServoKit Failed System will STILL continue without this feature!")
         warning_box("Communication with ServoKit Failed\nSystem will STILL continue without this feature!")

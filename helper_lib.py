@@ -48,7 +48,7 @@ class Data_Parser:
             with open(file_path) as file:
                 data = json.load(file)
                 self.items = data
-            print("Data updated successfully from JSON file.")
+            # print("Data updated successfully from JSON file.")
             # print(self.items)
         except FileNotFoundError:
             print(f"File '{file_path}' not found.")
